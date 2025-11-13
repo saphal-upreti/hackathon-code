@@ -5,12 +5,13 @@
 Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 
 // Servo channels
-#define SERVO3 3
-#define SERVO7 7
-#define SERVO11 11
-#define SERVO15 15
+#define SERVO_FL 3   // Front Left
+#define SERVO_FR 7   // Front Right
+#define SERVO_BL 11  // Back Left
+#define SERVO_BR 15  // Back Right
 
-#define SERVO_STOP     383
+// Servo PWM values
+#define SERVO_STOP     364
 #define SERVO_FORWARD  150
 #define SERVO_BACKWARD 500
 
@@ -26,101 +27,89 @@ void setup() {
   pwm.setPWMFreq(60);
   delay(100);
   
-  // FORCE STOP all servos
-  pwm.setPWM(SERVO3, 0, 383);
-  pwm.setPWM(SERVO7, 0, 383);
-  pwm.setPWM(SERVO11, 0, 384);
-  pwm.setPWM(SERVO15, 0, 383);
+  // Stop all servos initially
+  stopAllServos();
   delay(500);
   
   Ps3.begin("a0:5a:5b:a0:07:cb");
   Serial.println("=================================");
   Serial.println("System LOCKED - Servos STOPPED");
-  Serial.println("Press X button to enable control");
+  Serial.println("Press X button to ENABLE control");
+  Serial.println("Press O button to DISABLE control");
   Serial.println("=================================");
 }
 
 void loop() {
   if (Ps3.isConnected()) {
-    
-    // Press X button to enable system
+
+    // Enable control
     if (Ps3.data.button.cross) {
       systemEnabled = true;
       Serial.println(">>> SYSTEM ENABLED <<<");
     }
-    
-    // Press Circle button to disable
+
+    // Disable control
     if (Ps3.data.button.circle) {
       systemEnabled = false;
       Serial.println(">>> SYSTEM DISABLED <<<");
-      setAllServos(SERVO_STOP);
+      stopAllServos();
     }
-    
+
     if (!systemEnabled) {
-      setAllServos(SERVO_STOP);
-      Serial.println("System disabled - Press X to enable");
-      delay(500);
+      stopAllServos();
+      delay(200);
       return;
     }
-    
-    // Get stick values (-128 to +127 range for PS3)
-    int leftY = Ps3.data.analog.stick.ly;
-    int rightX = Ps3.data.analog.stick.rx;
-    
-    Serial.print("LY: "); Serial.print(leftY);
-    Serial.print(" RX: "); Serial.print(rightX);
-    
+
+    // Get joystick inputs
+    int leftY = Ps3.data.analog.stick.ly;  // Forward/Backward
+    int rightX = Ps3.data.analog.stick.rx; // Turning
+
     int deadzone = 20;
-    
-    // Check deadzone - center is 0 for PS3 sticks!
     if (abs(leftY) < deadzone && abs(rightX) < deadzone) {
-      setAllServos(SERVO_STOP);
-      Serial.println(" | CENTERED - STOPPED");
+      stopAllServos();
+      Serial.println("CENTERED - STOPPED");
       delay(50);
       return;
     }
-    
-    // Map stick input from -128 to +127 → -100 to +100
-    int forward = map(leftY, -128, 127, -100, 100);
-    int turn = map(rightX, -128, 127, -100, 100);  // Increased turn range to match forward
-    
-    // Tank drive mixing - CRITICAL CHANGE HERE
+
+    // Map to -100..100
+    int forward = map(rightX, -128, 127, -100, 100);
+    int turn = map(leftY, -128, 127, -100, 100);
+
+    // Tank drive mixing
     int leftPower  = constrain(forward + turn, -100, 100);
     int rightPower = constrain(forward - turn, -100, 100);
-    
+
     // Convert to PWM values
-    int speedFL = map(leftPower, -100, 100, SERVO_BACKWARD, SERVO_FORWARD);
-    int speedBL = speedFL;
-    int speedFR = map(rightPower, -100, 100, SERVO_BACKWARD, SERVO_FORWARD);
-    int speedBR = speedFR;
-    
-    // Set the actual speeds
-    pwm.setPWM(SERVO3, 0, speedFL);
-    pwm.setPWM(SERVO7, 0, speedFR);
-    pwm.setPWM(SERVO11, 0, speedBL);
-    pwm.setPWM(SERVO15, 0, speedBR);
-    
-    Serial.print(" | Forward: "); Serial.print(forward);
+    int pwmLeft  = map(leftPower, -100, 100, SERVO_BACKWARD, SERVO_FORWARD);
+    int pwmRight = map(rightPower, -100, 100, SERVO_BACKWARD, SERVO_FORWARD);
+
+    // Apply direction correction (right side reversed)
+    pwm.setPWM(SERVO_FL, 0, pwmLeft);
+    pwm.setPWM(SERVO_BL, 0, pwmLeft);
+    pwm.setPWM(SERVO_FR, 0, 766 - pwmRight); // invert
+    pwm.setPWM(SERVO_BR, 0, 766 - pwmRight); // invert
+
+    Serial.print("Forward: "); Serial.print(forward);
     Serial.print(" Turn: "); Serial.print(turn);
-    Serial.print(" | LeftPwr: "); Serial.print(leftPower);
-    Serial.print(" RightPwr: "); Serial.print(rightPower);
-    Serial.print(" | FL: "); Serial.print(speedFL);
-    Serial.print(" FR: "); Serial.print(speedFR);
-    Serial.println();
-    
+    Serial.print(" | LeftPWM: "); Serial.print(pwmLeft);
+    Serial.print(" RightPWM: "); Serial.println(pwmRight);
+
     delay(50);
-    
+
   } else {
-    // Controller NOT connected - STOP servos
-    setAllServos(SERVO_STOP);
+    stopAllServos();
     Serial.println("Controller NOT connected - STOPPED");
-    delay(200);
+    delay(300);
   }
 }
 
-void setAllServos(int pulse) {
-  pwm.setPWM(SERVO3, 0, pulse);
-  pwm.setPWM(SERVO7, 0, pulse);
-  pwm.setPWM(SERVO11, 0, pulse == 383 ? 384 : pulse);
-  pwm.setPWM(SERVO15, 0, pulse);
+void stopAllServos() {
+void setAllServosStop() {
+  pwm.setPWM(SERVO3, 0, 364);
+  pwm.setPWM(SERVO7, 0, 364);
+  pwm.setPWM(SERVO11, 0, 365);
+  pwm.setPWM(SERVO15, 0, 364);
+}
 }
